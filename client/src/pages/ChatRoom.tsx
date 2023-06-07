@@ -2,12 +2,14 @@ import { useContext, useEffect, useRef } from "react";
 import "./ChatRoom.css";
 import { useParams } from "react-router-dom";
 import { PeerContext } from "../contexts/peerConnection.context";
+import io, { Socket } from "socket.io-client";
 
 export default function ChatRoom() {
   const { roomId } = useParams();
   const peerConnection = useContext(PeerContext); // TODO: This should be singleton so that we create it on first use, rather than project start?
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const socketRef = useRef<Socket>();
 
   let localStream: MediaStream;
   let remoteStream: MediaStream;
@@ -16,8 +18,9 @@ export default function ChatRoom() {
     setup();
 
     async function setup() {
-      await initLocalStream();
-      initRemoteStream();
+      setupSignalServerSocket();
+      await setupLocalStream();
+      setupRemoteStream();
       // TODO: Should these functions be moved to the context?
       generateICECandidates();
       // TODO: Only create offer if we are the first in the room
@@ -25,7 +28,17 @@ export default function ChatRoom() {
     }
   }, []);
 
-  async function initLocalStream() {
+  function setupSignalServerSocket() {
+    socketRef.current = io("http://localhost:4004", {
+      transports: ["websocket"],
+    });
+
+    socketRef.current.on("connection-success", (success) => {
+      console.log("socket connection to sever a success!", success);
+    });
+  }
+
+  async function setupLocalStream() {
     // Set up the local media stream
     localStream = await navigator.mediaDevices.getUserMedia({
       video: true,
@@ -36,8 +49,9 @@ export default function ChatRoom() {
     }
   }
 
-  function initRemoteStream() {
+  function setupRemoteStream() {
     // TODO: Handle multiple remotes -  could create new peerConnection per each and then add to context array?
+    // multiple remoteStream and peerConnection objects required
     localStream.getTracks().forEach((track: MediaStreamTrack) => {
       peerConnection.addTrack(track, localStream);
     });
