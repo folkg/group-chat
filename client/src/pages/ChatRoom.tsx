@@ -5,7 +5,7 @@ import { PeerContext } from "../contexts/peerConnection.context";
 
 export default function ChatRoom() {
   const { roomId } = useParams();
-  const peerConnection = useContext(PeerContext);
+  const peerConnection = useContext(PeerContext); // TODO: This should be singleton so that we create it on first use, rather than project start?
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -13,44 +13,90 @@ export default function ChatRoom() {
   let remoteStream: MediaStream;
 
   useEffect(() => {
-    initializeWebRTC();
+    setup();
 
-    async function initializeWebRTC() {
-      // Set up the local media stream
-      try {
-        localStream = await openMediaDevices({
-          video: true,
-          audio: true,
-        });
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = localStream;
-        }
-      } catch (error) {
-        console.error("Error accessing media devices.", error);
-      }
-      localStream.getTracks().forEach((track: MediaStreamTrack) => {
-        peerConnection.addTrack(track, localStream);
-      });
-
-      // TODO: Handle multiple remotes
-      // Set up the remote media stream
-      remoteStream = new MediaStream();
-      peerConnection.addEventListener("track", (event: RTCTrackEvent) => {
-        event.streams[0].getTracks().forEach((track: MediaStreamTrack) => {
-          remoteStream.addTrack(track);
-        });
-      });
+    async function setup() {
+      await initLocalStream();
+      initRemoteStream();
+      // TODO: Should these functions be moved to the context?
+      generateICECandidates();
+      // TODO: Only create offer if we are the first in the room
+      await createOffer();
     }
   }, []);
 
-  return (
-    <>
-      <h1>ChatRoom {roomId}</h1>
-      <video ref={localVideoRef} autoPlay muted></video>
-    </>
-  );
-}
+  async function initLocalStream() {
+    // Set up the local media stream
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = localStream;
+    }
+  }
 
-async function openMediaDevices(constraints: MediaStreamConstraints) {
-  return await navigator.mediaDevices.getUserMedia(constraints);
+  function initRemoteStream() {
+    // TODO: Handle multiple remotes -  could create new peerConnection per each and then add to context array?
+    localStream.getTracks().forEach((track: MediaStreamTrack) => {
+      peerConnection.addTrack(track, localStream);
+    });
+
+    // Set up the remote media stream
+    remoteStream = new MediaStream();
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+    peerConnection.ontrack = (event: RTCTrackEvent) => {
+      event.streams[0].getTracks().forEach((track: MediaStreamTrack) => {
+        remoteStream.addTrack(track);
+      });
+    };
+  }
+
+  // TODO: Should these functions be moved to the context?
+  function generateICECandidates() {
+    peerConnection.onicecandidate = async (event) => {
+      if (event.candidate) {
+        console.log("new ICE candidate", event.candidate);
+      }
+    };
+  }
+  async function createOffer() {
+    const offerSDP: RTCSessionDescriptionInit =
+      await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offerSDP);
+    console.log(offerSDP);
+  }
+  async function createAnswer() {
+    const answerSDP: RTCSessionDescriptionInit =
+      await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answerSDP);
+    console.log(answerSDP);
+  }
+  async function setRemoteDescription(sdp: RTCSessionDescriptionInit) {
+    peerConnection.setRemoteDescription(sdp);
+  }
+  async function addICECandidate(candidate: RTCIceCandidateInit) {
+    peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+  }
+
+  return (
+    <div className="chat-container">
+      <h1>ChatRoom {roomId}</h1>
+      <div className="videos-container">
+        <video
+          className="video-container"
+          ref={localVideoRef}
+          autoPlay
+          muted
+        ></video>
+        <video
+          className="video-container"
+          ref={remoteVideoRef}
+          autoPlay
+        ></video>
+      </div>
+    </div>
+  );
 }
