@@ -5,6 +5,7 @@ import "./index.css";
 import Home from "./pages/Home.tsx";
 import ChatRoom from "./pages/ChatRoom.tsx";
 import ErrorPage from "./pages/ErrorPage.tsx";
+import { PeerContextProvider } from "./contexts/peerConnection.context.tsx";
 
 const router = createBrowserRouter([
   {
@@ -20,6 +21,8 @@ const router = createBrowserRouter([
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <RouterProvider router={router} />
+    <PeerContextProvider>
+      <RouterProvider router={router} />
+    </PeerContextProvider>
   </React.StrictMode>
 );
