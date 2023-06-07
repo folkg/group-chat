@@ -1,4 +1,16 @@
-.field-button-group {
+.home-cards {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2rem;
+}
+
+.home-card {
+    padding: 1rem;
+}
+
+.room-options {
     display: flex;
     flex-direction: column;
     gap: 1rem;
