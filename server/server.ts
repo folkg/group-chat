@@ -20,25 +20,42 @@ const server = app.listen(port, hostname, () => {
 const io: Server = new Server(server);
 io.on("connection", (socket) => {
   console.log(`New user connected on ${socket.id}`);
+
+  socket.on("join-room", async (roomId) => {
+    console.log(`user joined room ${roomId}`);
+    await socket.join(roomId);
+    socket.to(roomId).emit("new-user-joined");
+
+    socket.on("disconnect", () => {
+      socket.to(roomId).emit("user-disconnected", "userId?");
+    });
+  });
+
   socket.emit("connection-success", {
     status: "connection-succes",
     socketId: socket.id,
   });
 
   socket.on("sdp", (data) => {
-    console.log(data);
     socket.broadcast.emit("sdp", data);
-  });
-
-  socket.on("ice-candidate", (data) => {
-    socket.broadcast.emit("ice-candidate", data);
-  });
-
-  socket.on("join_room", (roomId) => {
-    console.log("user joined room #" + roomId);
   });
 
   socket.on("disconnect", () => {
     console.log(`User disconnected ${socket.id}`);
+  });
+
+  socket.on("offer", (data) => {
+    console.log("offer received");
+    socket.to(data.roomId).emit("offer", data);
+  });
+
+  socket.on("answer", (data) => {
+    console.log("answer received");
+    socket.to(data.roomId).emit("answer", data);
+  });
+
+  socket.on("ice-candidate", (data) => {
+    console.log("ice candidate received");
+    socket.to(data.roomId).emit("ice-candidate", data);
   });
 });

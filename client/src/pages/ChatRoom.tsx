@@ -18,34 +18,45 @@ export default function ChatRoom() {
     setup();
 
     async function setup() {
-      setupSignalServerSocket();
+      setupSocket();
       await setupLocalStream();
-      setupRemoteStream();
-      // TODO: Should these functions be moved to the context?
-      generateICECandidates();
-      // TODO: Only create offer if we are the first in the room
-      await createOffer();
+      setupPeerConnection();
     }
+
+    return () => {
+      socketRef.current?.disconnect();
+    };
   }, []);
 
-  function setupSignalServerSocket() {
-    socketRef.current = io("http://localhost:4004", {
+  function setupSocket() {
+    const socket = io("http://localhost:4004", {
       transports: ["websocket"],
     });
+    socketRef.current = socket;
 
-    socketRef.current.on("connection-success", (success) => {
+    socket.emit("join-room", roomId);
+
+    socket.on("connection-success", (success) => {
       console.log("socket connection to sever a success!", success);
     });
 
-    socketRef.current.on("sdp", (data) => {
-      // TODO: Check for offer/answer and perform different actions
-      console.log(data);
-      setRemoteDescription(data.sdp);
+    socket.on("new-user-joined", () => {
+      console.log("New user joined");
+      createOffer();
     });
 
-    socketRef.current.on("ice-candidate", (data) => {
+    socket.on("sdp", (sdp) => {
+      // TODO: Check for offer/answer and perform different actions?
+      console.log("SDP received", sdp);
+      peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+      if (sdp.type === "offer") {
+        createAnswer();
+      }
+    });
+
+    socket.on("ice-candidate", (data) => {
       console.log(data);
-      addICECandidate(data.candidate);
+      peerConnection.addIceCandidate(data.candidate);
     });
   }
 
@@ -60,7 +71,7 @@ export default function ChatRoom() {
     }
   }
 
-  function setupRemoteStream() {
+  function setupPeerConnection() {
     // TODO: Handle multiple remotes -  could create new peerConnection per each and then add to context array?
     // multiple remoteStream and peerConnection objects required
     localStream.getTracks().forEach((track: MediaStreamTrack) => {
@@ -72,15 +83,13 @@ export default function ChatRoom() {
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = remoteStream;
     }
+
     peerConnection.ontrack = (event: RTCTrackEvent) => {
       event.streams[0].getTracks().forEach((track: MediaStreamTrack) => {
         remoteStream.addTrack(track);
       });
     };
-  }
 
-  // TODO: Should these functions be moved to the context?
-  function generateICECandidates() {
     peerConnection.onicecandidate = async (event) => {
       if (event.candidate) {
         console.log("new ICE candidate", event.candidate);
@@ -88,29 +97,20 @@ export default function ChatRoom() {
       }
     };
   }
+
   async function createOffer() {
     const offerSDP: RTCSessionDescriptionInit =
       await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offerSDP);
-    socketRef.current?.emit("sdp", {
-      sdp: offerSDP,
-    });
+    socketRef.current?.emit("sdp", offerSDP);
     console.log(offerSDP);
   }
   async function createAnswer() {
     const answerSDP: RTCSessionDescriptionInit =
       await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answerSDP);
-    socketRef.current?.emit("sdp", {
-      sdp: answerSDP,
-    });
+    socketRef.current?.emit("sdp", answerSDP);
     console.log(answerSDP);
-  }
-  async function setRemoteDescription(sdp: RTCSessionDescriptionInit) {
-    peerConnection.setRemoteDescription(sdp);
-  }
-  async function addICECandidate(candidate: RTCIceCandidateInit) {
-    peerConnection.addIceCandidate(candidate);
   }
 
   return (
