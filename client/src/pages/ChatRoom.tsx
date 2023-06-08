@@ -36,6 +36,17 @@ export default function ChatRoom() {
     socketRef.current.on("connection-success", (success) => {
       console.log("socket connection to sever a success!", success);
     });
+
+    socketRef.current.on("sdp", (data) => {
+      // TODO: Check for offer/answer and perform different actions
+      console.log(data);
+      setRemoteDescription(data.sdp);
+    });
+
+    socketRef.current.on("ice-candidate", (data) => {
+      console.log(data);
+      addICECandidate(data.candidate);
+    });
   }
 
   async function setupLocalStream() {
@@ -73,6 +84,7 @@ export default function ChatRoom() {
     peerConnection.onicecandidate = async (event) => {
       if (event.candidate) {
         console.log("new ICE candidate", event.candidate);
+        socketRef.current?.emit("ice-candidate", event.candidate);
       }
     };
   }
@@ -80,19 +92,25 @@ export default function ChatRoom() {
     const offerSDP: RTCSessionDescriptionInit =
       await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offerSDP);
+    socketRef.current?.emit("sdp", {
+      sdp: offerSDP,
+    });
     console.log(offerSDP);
   }
   async function createAnswer() {
     const answerSDP: RTCSessionDescriptionInit =
       await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answerSDP);
+    socketRef.current?.emit("sdp", {
+      sdp: answerSDP,
+    });
     console.log(answerSDP);
   }
   async function setRemoteDescription(sdp: RTCSessionDescriptionInit) {
     peerConnection.setRemoteDescription(sdp);
   }
   async function addICECandidate(candidate: RTCIceCandidateInit) {
-    peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    peerConnection.addIceCandidate(candidate);
   }
 
   return (

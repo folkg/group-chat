@@ -20,7 +20,19 @@ const server = app.listen(port, hostname, () => {
 const io: Server = new Server(server);
 io.on("connection", (socket) => {
   console.log(`New user connected on ${socket.id}`);
-  socket.emit("connection-success", `Connected to server on ${socket.id}`);
+  socket.emit("connection-success", {
+    status: "connection-succes",
+    socketId: socket.id,
+  });
+
+  socket.on("sdp", (data) => {
+    console.log(data);
+    socket.broadcast.emit("sdp", data);
+  });
+
+  socket.on("ice-candidate", (data) => {
+    socket.broadcast.emit("ice-candidate", data);
+  });
 
   socket.on("join_room", (roomId) => {
     console.log("user joined room #" + roomId);
