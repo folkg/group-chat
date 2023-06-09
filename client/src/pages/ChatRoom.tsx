@@ -25,6 +25,7 @@ export default function ChatRoom() {
 
     return () => {
       socketRef.current?.disconnect();
+      peerConnection.current?.close();
     };
   }, []);
 
