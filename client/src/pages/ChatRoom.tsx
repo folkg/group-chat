@@ -37,9 +37,6 @@ export default function ChatRoom() {
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = localStream;
     }
-    // TODO: Fix video not showing up on initial connection?
-    // TODO: Make responsive, so that it goes to column if too narrow
-    // TODO: show rejection screen if room is full (error boundary?)
     // TODO: Make sure button on home routes to room (and created uuid on new room)
     // Set up the remote media stream
     remoteStream = new MediaStream();
