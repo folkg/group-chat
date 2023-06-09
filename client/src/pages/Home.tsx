@@ -1,18 +1,29 @@
 import { Button, Card, TextField } from "@mui/material";
 import "./Home.css";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { v4 as uuidv4 } from "uuid";
 
 export default function Home() {
   const [name, setName] = useState("");
   const [roomId, setRoomId] = useState("");
+  const navigate = useNavigate();
 
-  const handleNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  function handleNameChange(event: React.ChangeEvent<HTMLInputElement>) {
     setName(event.target.value);
-  };
+  }
 
-  const handleRoomIdChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  function handleRoomIdChange(event: React.ChangeEvent<HTMLInputElement>) {
     setRoomId(event.target.value);
-  };
+  }
+
+  function createNewRoom() {
+    navigate(`/room/${uuidv4()}`);
+  }
+
+  function joinExistingRoom() {
+    navigate(`/room/${roomId}`);
+  }
 
   const isNameValid = name.trim().length > 0;
   const isRoomIdValid = roomId.trim().length > 0;
@@ -36,6 +47,7 @@ export default function Home() {
             <Button
               variant="contained"
               disabled={!isNameValid || isRoomIdValid}
+              onClick={createNewRoom}
             >
               Create New Room
             </Button>
@@ -51,6 +63,7 @@ export default function Home() {
             <Button
               variant="contained"
               disabled={!isNameValid || !isRoomIdValid}
+              onClick={joinExistingRoom}
             >
               Join Existing Room
             </Button>
