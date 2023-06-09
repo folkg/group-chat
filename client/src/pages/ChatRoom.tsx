@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./ChatRoom.css";
 import { useParams } from "react-router-dom";
 import io, { Socket } from "socket.io-client";
@@ -9,6 +9,7 @@ export default function ChatRoom() {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const socketRef = useRef<Socket>();
+  const [isRoomFull, setIsRoomFull] = useState(false);
 
   let localStream: MediaStream;
   let remoteStream: MediaStream;
@@ -96,8 +97,8 @@ export default function ChatRoom() {
     });
 
     socket.on("room-full", () => {
-      // TODO: Show error page instead
-      console.log("Room was full, cannot enter.");
+      console.log("Room is full. Cannot enter");
+      setIsRoomFull(true);
     });
 
     socket.on("new-user-joined", () => {
@@ -147,8 +148,14 @@ export default function ChatRoom() {
     }
   }
 
-  return (
-    <div className="chat-container">
+  const roomFullError = (
+    <>
+      <h1>This Chat Room is currently full.</h1>
+      <p>Please try again later.</p>
+    </>
+  );
+  const videos = (
+    <>
       <h1>ChatRoom {roomId}</h1>
       <div className="videos-container">
         <video
@@ -163,6 +170,9 @@ export default function ChatRoom() {
           autoPlay
         ></video>
       </div>
-    </div>
+    </>
+  );
+  return (
+    <div className="chat-container">{isRoomFull ? roomFullError : videos}</div>
   );
 }
