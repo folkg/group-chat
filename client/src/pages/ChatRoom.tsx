@@ -1,12 +1,11 @@
-import { useContext, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import "./ChatRoom.css";
 import { useParams } from "react-router-dom";
-import { PeerContext } from "../contexts/peerConnection.context";
 import io, { Socket } from "socket.io-client";
 
 export default function ChatRoom() {
   const { roomId } = useParams();
-  const peerConnection = useContext(PeerContext); // TODO: This should be singleton so that we create it on first use, rather than project start?
+  const peerConnection = useRef<RTCPeerConnection>();
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const socketRef = useRef<Socket>();
@@ -18,15 +17,70 @@ export default function ChatRoom() {
     setup();
 
     async function setup() {
-      setupSocket();
-      await setupLocalStream();
+      await setupStreams();
       setupPeerConnection();
+      setupSocket();
     }
 
     return () => {
       socketRef.current?.disconnect();
     };
   }, []);
+
+  async function setupStreams() {
+    // Set up the local media stream
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = localStream;
+    }
+    // TODO: Fix video not showing up on initial connection?
+    // TODO: Make responsive, so that it goes to column if too narrow
+    // TODO: show rejection screen if room is full (error boundary?)
+    // TODO: Make sure button on home routes to room (and created uuid on new room)
+    // Set up the remote media stream
+    remoteStream = new MediaStream();
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+  }
+
+  function setupPeerConnection() {
+    const configuration: RTCConfiguration = {
+      iceServers: [
+        {
+          urls: [
+            "stun:stun1.l.google.com:19302",
+            "stun:stun2.l.google.com:19302",
+          ], // Google STUN servers
+        },
+      ],
+      iceCandidatePoolSize: 10,
+    };
+    peerConnection.current = new RTCPeerConnection(configuration);
+
+    localStream.getTracks().forEach((track: MediaStreamTrack) => {
+      peerConnection.current?.addTrack(track, localStream);
+    });
+
+    peerConnection.current.ontrack = (event: RTCTrackEvent) => {
+      event.streams[0].getTracks().forEach((track: MediaStreamTrack) => {
+        remoteStream.addTrack(track);
+      });
+    };
+
+    peerConnection.current.onicecandidate = async (event) => {
+      if (event.candidate) {
+        console.log(
+          "new ICE candidate discovered, sending to other user",
+          event.candidate
+        );
+        socketRef.current?.emit("ice-candidate", event.candidate);
+      }
+    };
+  }
 
   function setupSocket() {
     const socket = io("http://localhost:4004", {
@@ -37,80 +91,60 @@ export default function ChatRoom() {
     socket.emit("join-room", roomId);
 
     socket.on("connection-success", (success) => {
+      // Could save the socketId for later in multi-peer settings
       console.log("socket connection to sever a success!", success);
     });
 
+    socket.on("room-full", () => {
+      // TODO: Show error page instead
+      console.log("Room was full, cannot enter.");
+    });
+
     socket.on("new-user-joined", () => {
-      console.log("New user joined");
+      console.log("New user joined. You were the first one in the chat.");
       createOffer();
     });
 
     socket.on("sdp", (sdp) => {
-      // TODO: Check for offer/answer and perform different actions?
       console.log("SDP received", sdp);
-      peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+      peerConnection.current?.setRemoteDescription(
+        new RTCSessionDescription(sdp)
+      );
       if (sdp.type === "offer") {
         createAnswer();
       }
     });
 
+    socket.on("user-disconnected", () => {
+      console.log("other use left");
+    });
+
     socket.on("ice-candidate", (data) => {
-      console.log(data);
-      peerConnection.addIceCandidate(data.candidate);
+      console.log("received ICE from other user", data);
+      peerConnection.current?.addIceCandidate(new RTCIceCandidate(data));
     });
-  }
-
-  async function setupLocalStream() {
-    // Set up the local media stream
-    localStream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = localStream;
-    }
-  }
-
-  function setupPeerConnection() {
-    // TODO: Handle multiple remotes -  could create new peerConnection per each and then add to context array?
-    // multiple remoteStream and peerConnection objects required
-    localStream.getTracks().forEach((track: MediaStreamTrack) => {
-      peerConnection.addTrack(track, localStream);
-    });
-
-    // Set up the remote media stream
-    remoteStream = new MediaStream();
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
-
-    peerConnection.ontrack = (event: RTCTrackEvent) => {
-      event.streams[0].getTracks().forEach((track: MediaStreamTrack) => {
-        remoteStream.addTrack(track);
-      });
-    };
-
-    peerConnection.onicecandidate = async (event) => {
-      if (event.candidate) {
-        console.log("new ICE candidate", event.candidate);
-        socketRef.current?.emit("ice-candidate", event.candidate);
-      }
-    };
   }
 
   async function createOffer() {
-    const offerSDP: RTCSessionDescriptionInit =
-      await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offerSDP);
-    socketRef.current?.emit("sdp", offerSDP);
-    console.log(offerSDP);
+    if (peerConnection.current) {
+      const offerSDP: RTCSessionDescriptionInit =
+        await peerConnection.current.createOffer();
+      await peerConnection.current?.setLocalDescription(offerSDP);
+      socketRef.current?.emit("sdp", offerSDP);
+      console.log("sending SDP offer");
+      console.log(offerSDP);
+    }
   }
+
   async function createAnswer() {
-    const answerSDP: RTCSessionDescriptionInit =
-      await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answerSDP);
-    socketRef.current?.emit("sdp", answerSDP);
-    console.log(answerSDP);
+    if (peerConnection.current) {
+      const answerSDP: RTCSessionDescriptionInit =
+        await peerConnection.current.createAnswer();
+      await peerConnection.current.setLocalDescription(answerSDP);
+      socketRef.current?.emit("sdp", answerSDP);
+      console.log("sending SDP answer");
+      console.log(answerSDP);
+    }
   }
 
   return (

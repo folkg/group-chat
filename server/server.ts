@@ -17,23 +17,44 @@ const server = app.listen(port, hostname, () => {
   console.log(`Server running at http://${hostname}:${port}/`);
 });
 
+const MAX_CLIENTS_PER_ROOM = 2;
+const clientsPerRoom = new Map<string, number>();
 const io: Server = new Server(server);
 io.on("connection", (socket) => {
   console.log(`New user connected on ${socket.id}`);
 
   socket.on("join-room", async (roomId) => {
-    console.log(`user joined room ${roomId}`);
+    const numClientsInRoom = clientsPerRoom.get(roomId);
+    if (numClientsInRoom && numClientsInRoom >= MAX_CLIENTS_PER_ROOM) {
+      console.log(`user tried joined room ${roomId}, but it was full`);
+      socket.emit("room-full");
+      return;
+    }
+
     await socket.join(roomId);
-    socket.to(roomId).emit("new-user-joined");
+    console.log(`user joined room ${roomId}`);
+
+    socket.emit("connection-success", {
+      status: "connection-succes",
+      socketId: socket.id,
+      otherUsers: [], // TODO: If we want to keep track
+    });
+
+    clientsPerRoom.set(roomId, (clientsPerRoom.get(roomId) ?? 0) + 1);
+    socket.to(roomId).emit("new-user-joined", socket.id);
+
+    socket.on("ice-candidate", (data) => {
+      console.log("ice candidate received");
+      socket.to(roomId).emit("ice-candidate", data);
+    });
 
     socket.on("disconnect", () => {
-      socket.to(roomId).emit("user-disconnected", "userId?");
+      const numClientsInRoom = clientsPerRoom.get(roomId);
+      if (numClientsInRoom) {
+        clientsPerRoom.set(roomId, numClientsInRoom - 1);
+        socket.to(roomId).emit("user-disconnected", socket.id);
+      }
     });
-  });
-
-  socket.emit("connection-success", {
-    status: "connection-succes",
-    socketId: socket.id,
   });
 
   socket.on("sdp", (data) => {
@@ -42,20 +63,5 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log(`User disconnected ${socket.id}`);
-  });
-
-  socket.on("offer", (data) => {
-    console.log("offer received");
-    socket.to(data.roomId).emit("offer", data);
-  });
-
-  socket.on("answer", (data) => {
-    console.log("answer received");
-    socket.to(data.roomId).emit("answer", data);
-  });
-
-  socket.on("ice-candidate", (data) => {
-    console.log("ice candidate received");
-    socket.to(data.roomId).emit("ice-candidate", data);
   });
 });
