@@ -9,6 +9,7 @@ export default function ChatRoom() {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const socketRef = useRef<Socket>();
+  const [state, setState] = useState("");
   const [isRoomFull, setIsRoomFull] = useState(false);
 
   let localStream: MediaStream;
@@ -30,19 +31,12 @@ export default function ChatRoom() {
   }, []);
 
   async function setupStreams() {
-    // Set up the local media stream
     localStream = await navigator.mediaDevices.getUserMedia({
       video: true,
       audio: true,
     });
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = localStream;
-    }
-    // TODO: Make sure button on home routes to room (and created uuid on new room)
-    // Set up the remote media stream
-    remoteStream = new MediaStream();
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream;
     }
   }
 
@@ -59,6 +53,11 @@ export default function ChatRoom() {
       iceCandidatePoolSize: 10,
     };
     peerConnection.current = new RTCPeerConnection(configuration);
+
+    remoteStream = new MediaStream();
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
 
     localStream.getTracks().forEach((track: MediaStreamTrack) => {
       peerConnection.current?.addTrack(track, localStream);
@@ -79,6 +78,20 @@ export default function ChatRoom() {
         socketRef.current?.emit("ice-candidate", event.candidate);
       }
     };
+
+    peerConnection.current.onconnectionstatechange = async (event) => {
+      const newState = peerConnection.current?.connectionState;
+      console.log("Connection state changed:", newState);
+      if (newState) {
+        setState(newState);
+        if (newState === "disconnected") {
+          // create a new RTCPeerConnection object if closed
+          console.log("peer connection is closed, creating a new one.");
+          // TODO: This new connection is still not working. Why?
+          setupPeerConnection();
+        }
+      }
+    };
   }
 
   function setupSocket() {
@@ -87,6 +100,7 @@ export default function ChatRoom() {
     });
     socketRef.current = socket;
 
+    // TODO: Could pass our username as well to dusplay on screen or chat
     socket.emit("join-room", roomId);
 
     socket.on("connection-success", (success) => {
@@ -105,6 +119,7 @@ export default function ChatRoom() {
     });
 
     socket.on("sdp", (sdp) => {
+      // Session Description Protocol
       console.log("SDP received", sdp);
       peerConnection.current?.setRemoteDescription(
         new RTCSessionDescription(sdp)
@@ -119,6 +134,8 @@ export default function ChatRoom() {
     });
 
     socket.on("ice-candidate", (data) => {
+      // Interactive Connectivity Establishment
+      // Ideally uses a UDP direct connection, but can use TCP or TURN server
       console.log("received ICE from other user", data);
       peerConnection.current?.addIceCandidate(new RTCIceCandidate(data));
     });
@@ -155,6 +172,7 @@ export default function ChatRoom() {
   const videos = (
     <>
       <h1>ChatRoom {roomId}</h1>
+      <h3>{state}</h3>
       <div className="videos-container">
         <video
           className="video-container"
